@@ -1,0 +1,131 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 250" fill="none">
+  <!--
+    Saathi patient app — welcome screen hero illustration.
+
+    A hospital connects to the patient's phone through a secured (padlock)
+    link, with the phone showing a verified shield and an activation QR code.
+
+    Composed for a WIDE, SHORT card (640x250, ~2.56:1). The welcome screen has
+    to fit a phone without scrolling, so the scene is laid out horizontally
+    rather than stacked — scaling a taller illustration down instead would
+    have left large empty margins either side of the card.
+
+    Deliberately contains NO text. The "Linked to Hospital Record" caption is
+    a real Flutter Text widget positioned over the phone screen so it
+    translates with the app language. Reserved area: x 404-496, y 138-178.
+  -->
+
+  <!-- soft background wash + ground -->
+  <path d="M0 0 H640 V66 Q480 104 320 74 Q160 44 0 82 Z" fill="#EFF7F2"/>
+  <ellipse cx="320" cy="228" rx="276" ry="18" fill="#E0EFE6"/>
+
+  <!-- faint decorative accents -->
+  <g stroke="#CFE3D5" stroke-width="6" stroke-linecap="round">
+    <path d="M62 104 v20 M52 114 h20"/>
+    <path d="M592 96 v18 M583 105 h18"/>
+  </g>
+  <circle cx="548" cy="40" r="6" stroke="#CFE3D5" stroke-width="3.5"/>
+  <circle cx="120" cy="42" r="4" fill="#CFE3D5"/>
+  <circle cx="612" cy="150" r="4.5" fill="#D8E9DE"/>
+
+  <!-- botanical sprig, left -->
+  <g>
+    <path d="M40 236 C34 208 31 186 33 164" stroke="#A9CDB4" stroke-width="3.5" stroke-linecap="round"/>
+    <g fill="#C4DECB">
+      <path d="M33 168 c8 -14 27 -17 38 -9 c-6 14 -25 19 -38 9 z"/>
+      <path d="M36 194 c-10 -13 -6 -30 5 -38 c9 11 8 29 -5 38 z"/>
+      <path d="M39 212 c11 -11 30 -9 38 2 c-11 11 -30 9 -38 -2 z"/>
+    </g>
+  </g>
+
+  <!-- botanical sprig, right -->
+  <g>
+    <path d="M600 236 C606 208 609 186 607 164" stroke="#A9CDB4" stroke-width="3.5" stroke-linecap="round"/>
+    <g fill="#C4DECB">
+      <path d="M607 168 c-8 -14 -27 -17 -38 -9 c6 14 25 19 38 9 z"/>
+      <path d="M604 194 c10 -13 6 -30 -5 -38 c-9 11 -8 29 5 38 z"/>
+      <path d="M601 212 c-11 -11 -30 -9 -38 2 c11 11 30 9 38 -2 z"/>
+    </g>
+  </g>
+
+  <!-- hospital: side wings -->
+  <g stroke="#16233F" stroke-width="3.5">
+    <rect x="78" y="168" width="44" height="58" rx="4" fill="#EAF4EE"/>
+    <rect x="198" y="168" width="44" height="58" rx="4" fill="#EAF4EE"/>
+  </g>
+  <g fill="#2F8B5A">
+    <rect x="88" y="180" width="11" height="11" rx="2"/>
+    <rect x="104" y="180" width="11" height="11" rx="2"/>
+    <rect x="206" y="180" width="11" height="11" rx="2"/>
+    <rect x="222" y="180" width="11" height="11" rx="2"/>
+  </g>
+
+  <!-- hospital: main block + arched roof -->
+  <path d="M122 226 V108 Q122 78 160 78 Q198 78 198 108 V226 Z"
+        fill="#FFFFFF" stroke="#16233F" stroke-width="4" stroke-linejoin="round"/>
+
+  <!-- cross emblem above the entrance -->
+  <circle cx="160" cy="100" r="15" fill="#17683F"/>
+  <path d="M160 92 v16 M152 100 h16" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round"/>
+
+  <!-- windows -->
+  <g fill="#2F8B5A">
+    <rect x="131" y="124" width="12" height="12" rx="2"/>
+    <rect x="154" y="124" width="12" height="12" rx="2"/>
+    <rect x="177" y="124" width="12" height="12" rx="2"/>
+    <rect x="131" y="146" width="12" height="12" rx="2"/>
+    <rect x="177" y="146" width="12" height="12" rx="2"/>
+  </g>
+
+  <!-- entrance door -->
+  <path d="M148 226 v-26 a12 12 0 0 1 24 0 v26 z" fill="#14524A"/>
+  <path d="M160 202 v24" stroke="#7FB79E" stroke-width="1.8"/>
+
+  <!-- shrubs -->
+  <ellipse cx="100" cy="226" rx="20" ry="13" fill="#2F8B5A"/>
+  <ellipse cx="224" cy="226" rx="18" ry="12" fill="#1F6E45"/>
+  <ellipse cx="140" cy="229" rx="13" ry="9" fill="#3E9C68"/>
+
+  <!-- secure link arc -->
+  <path d="M212 74 C240 22 370 20 398 66" stroke="#2E8B57" stroke-width="3.5"
+        stroke-linecap="round" stroke-dasharray="8 11" fill="none"/>
+
+  <!-- phone -->
+  <rect x="396" y="52" width="108" height="174" rx="20" fill="#FFFFFF" stroke="#16233F" stroke-width="5"/>
+  <rect x="432" y="61" width="36" height="8" rx="4" fill="#16233F"/>
+
+  <!-- verified shield on the phone screen -->
+  <path d="M450 78 L470 86 V103 C470 115 459 123 450 126 C441 123 430 115 430 103 V86 Z" fill="#17683F"/>
+  <path d="M441 101 l6 6 l12 -13" stroke="#FFFFFF" stroke-width="4.5"
+        stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+
+  <!-- activation QR card -->
+  <rect x="486" y="148" width="86" height="86" rx="10" fill="#FFFFFF" stroke="#DDE5E1" stroke-width="2.5"/>
+  <g fill="#16233F">
+    <path d="M495 157 h20 v20 h-20 z M500 162 h10 v10 h-10 z" fill-rule="evenodd"/>
+    <rect x="503" y="165" width="5" height="5"/>
+    <path d="M543 157 h20 v20 h-20 z M548 162 h10 v10 h-10 z" fill-rule="evenodd"/>
+    <rect x="551" y="165" width="5" height="5"/>
+    <path d="M495 205 h20 v20 h-20 z M500 210 h10 v10 h-10 z" fill-rule="evenodd"/>
+    <rect x="503" y="213" width="5" height="5"/>
+    <rect x="524" y="158" width="6" height="6"/>
+    <rect x="532" y="168" width="6" height="6"/>
+    <rect x="522" y="178" width="6" height="6"/>
+    <rect x="495" y="188" width="6" height="6"/>
+    <rect x="507" y="188" width="6" height="6"/>
+    <rect x="524" y="190" width="6" height="6"/>
+    <rect x="542" y="186" width="6" height="6"/>
+    <rect x="556" y="192" width="6" height="6"/>
+    <rect x="534" y="204" width="6" height="6"/>
+    <rect x="548" y="212" width="6" height="6"/>
+    <rect x="560" y="222" width="6" height="6"/>
+    <rect x="530" y="220" width="6" height="6"/>
+  </g>
+
+  <!-- padlock on the link arc (drawn last so it sits above the dashes) -->
+  <circle cx="305" cy="33" r="25" fill="#FFFFFF" stroke="#DCEBE1" stroke-width="2.5"/>
+  <path d="M298 27 v-6 a7 7 0 0 1 14 0 v6" stroke="#17683F" stroke-width="4"
+        stroke-linecap="round" fill="none"/>
+  <rect x="293" y="27" width="24" height="19" rx="5" fill="#17683F"/>
+  <circle cx="305" cy="36" r="2.7" fill="#FFFFFF"/>
+</svg>

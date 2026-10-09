@@ -1,0 +1,84 @@
+# Local credentials and environment files. Keep safe templates versioned.
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.*.example
+*.env
+!*.env.example
+
+# Python virtual environments, bytecode, and test/type-check caches.
+**/venv/
+**/.venv/
+**/env/
+**/ENV/
+**/__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage/
+htmlcov/
+
+# Flutter/Dart and native build output.
+**/.dart_tool/
+**/.pub-cache/
+**/.gradle/
+**/build/
+**/local.properties
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Packaged application builds and local signing credentials.
+*.apk
+*.aab
+*.jks
+*.keystore
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Local databases and database backup/export files. Keep source migrations
+# (including .sql files) trackable.
+*.db
+*.sqlite
+*.sqlite3
+*.dump
+*.mysql
+*.sql.gz
+*.sql.bak
+*_backup.sql
+*_dump.sql
+*.bak
+*.backup
+
+# Generated screenshots, temporary test output, logs, and caches.
+/output/
+**/output/
+/tmp/
+**/tmp/
+**/screenshots/
+**/generated_screenshots/
+*.log
+*.tmp
+*.temp
+*.swp
+test-results/
+reports/
+.cache/
+.sass-cache/
+
+# OS and IDE files.
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+*.class

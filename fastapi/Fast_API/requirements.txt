@@ -1,0 +1,12 @@
+fastapi>=0.115,<1
+uvicorn[standard]>=0.30
+sqlalchemy>=2.0,<3
+pymysql>=1.1
+python-dotenv>=1.0
+python-jose[cryptography]>=3.3
+passlib[bcrypt]>=1.7
+# Passlib 1.7.4's bcrypt backend detection is incompatible with bcrypt 5.x.
+bcrypt>=4.3,<5
+python-multipart>=0.0.9
+pypdf>=5.0
+groq>=1.7
