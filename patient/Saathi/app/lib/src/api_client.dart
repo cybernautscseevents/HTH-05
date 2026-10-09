@@ -111,30 +111,54 @@ class ApiClient {
 
   /// Parses a non-2xx response or throws [ApiException].
   Map<String, dynamic> _object(http.Response response) {
-    final body = response.body.isEmpty
-        ? <String, dynamic>{}
-        : jsonDecode(response.body) as Map<String, dynamic>;
-    if (response.statusCode < 200 || response.statusCode >= 300) {
+    _checkStatus(response);
+    try {
+      final body = response.body.isEmpty
+          ? <String, dynamic>{}
+          : jsonDecode(response.body) as Map<String, dynamic>;
+      return body;
+    } catch (_) {
       throw ApiException(
-        body['detail']?.toString() ?? 'Something went wrong',
+        'The server returned an invalid response. Please retry.',
         statusCode: response.statusCode,
       );
     }
-    return body;
+  }
+
+  void _checkStatus(http.Response response) {
+    if (response.statusCode >= 200 && response.statusCode < 300) return;
+    String? detail;
+    try {
+      final body = jsonDecode(response.body);
+      if (body is Map && body['detail'] is String) {
+        detail = body['detail'] as String;
+      }
+      if (body is Map && body['detail'] is List) {
+        detail =
+            'The report could not be accepted. Check the extracted information and retry.';
+      }
+    } catch (_) {
+      // Render/proxies may return plain text or HTML on errors. Never expose
+      // that response body (or lose the HTTP status to a JSON parsing error).
+    }
+    throw ApiException(
+      detail ??
+          'The server could not complete the request (HTTP ${response.statusCode}). Please retry.',
+      statusCode: response.statusCode,
+    );
   }
 
   /// Parses a list response, throwing [ApiException] on non-2xx.
   List<dynamic> _list(http.Response response) {
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      final body = response.body.isEmpty
-          ? <String, dynamic>{}
-          : jsonDecode(response.body) as Map<String, dynamic>;
+    _checkStatus(response);
+    try {
+      return jsonDecode(response.body) as List<dynamic>;
+    } catch (_) {
       throw ApiException(
-        body['detail']?.toString() ?? 'Something went wrong',
+        'The server returned an invalid response. Please retry.',
         statusCode: response.statusCode,
       );
     }
-    return jsonDecode(response.body) as List<dynamic>;
   }
 
   /// GET /patients/{patient_id} with Bearer token
@@ -347,7 +371,10 @@ class _TimedClient extends http.BaseClient {
 
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
-    final limit = request is http.MultipartRequest
+    final limit =
+        request is http.MultipartRequest ||
+            request.url.path == '/patients/me/discharge-chat' ||
+            request.url.path == '/patients/me/discharge-reports'
         ? const Duration(seconds: 60)
         : const Duration(seconds: 15);
     try {

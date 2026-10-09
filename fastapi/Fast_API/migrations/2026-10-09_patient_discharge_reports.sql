@@ -1,3 +1,10 @@
+-- REVIEW ONLY: do not run automatically on shared Aiven.
+-- 2026-10-09 read-only inspection: this table is absent from the configured DB.
+-- Requires explicit owner approval and a verified backup before execution.
+-- Creates only patient-uploaded document storage; existing patient/staff tables
+-- and records are not updated. The parent patients.patient_id is signed INT.
+-- If a table already exists, inspect every column and unique/FK constraint:
+-- IF NOT EXISTS will not repair an incompatible existing table.
 CREATE TABLE IF NOT EXISTS patient_discharge_reports (
     report_id BIGINT NOT NULL AUTO_INCREMENT,
     patient_id INT NOT NULL,

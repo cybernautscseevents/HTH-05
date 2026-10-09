@@ -67,68 +67,128 @@ Future<int?> pickAndReviewDischargeDocument(
   try {
     final result = await controller.summarizeDischargeDocument(fileName, bytes);
     if (!context.mounted) return null;
+    var saving = false;
+    String? saveError;
     return await showDialog<int>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        icon: const Icon(Icons.summarize_rounded, color: saathiGreen),
-        title: const Text('Your discharge summary'),
-        content: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 520, maxHeight: 520),
-          child: SingleChildScrollView(
-            key: const Key('dischargeSummaryContent'),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SelectableText(
-                  cleanPatientFacingText(result['summary']?.toString() ?? ''),
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, updateDialog) => PopScope(
+          canPop: !saving,
+          child: AlertDialog(
+            icon: const Icon(Icons.summarize_rounded, color: saathiGreen),
+            title: const Text('Your discharge summary'),
+            content: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 520, maxHeight: 520),
+              child: SingleChildScrollView(
+                key: const Key('dischargeSummaryContent'),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SelectableText(
+                      cleanPatientFacingText(
+                        result['summary']?.toString() ?? '',
+                      ),
+                    ),
+                    if (result['extracted'] is Map<String, dynamic>) ...[
+                      const SizedBox(height: 20),
+                      _ExtractedCarePlan(
+                        data: result['extracted'] as Map<String, dynamic>,
+                      ),
+                    ],
+                    const SizedBox(height: 18),
+                    Text(
+                      result['disclaimer']?.toString() ??
+                          'AI-generated explanation. Check instructions with your care team.',
+                      style: Theme.of(dialogContext).textTheme.bodySmall
+                          ?.copyWith(
+                            color: Theme.of(
+                              dialogContext,
+                            ).colorScheme.onSurfaceVariant,
+                          ),
+                    ),
+                  ],
                 ),
-                if (result['extracted'] is Map<String, dynamic>) ...[
-                  const SizedBox(height: 20),
-                  _ExtractedCarePlan(
-                    data: result['extracted'] as Map<String, dynamic>,
-                  ),
-                ],
-                const SizedBox(height: 18),
-                Text(
-                  result['disclaimer']?.toString() ??
-                      'AI-generated explanation. Check instructions with your care team.',
-                  style: Theme.of(dialogContext).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(dialogContext).colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
+              ),
             ),
+            actions: [
+              if (saveError != null)
+                SizedBox(
+                  width: double.infinity,
+                  child: Semantics(
+                    liveRegion: true,
+                    child: Text(
+                      saveError!,
+                      key: const Key('dischargeReportSaveError'),
+                      style: TextStyle(
+                        color: Theme.of(dialogContext).colorScheme.error,
+                      ),
+                    ),
+                  ),
+                ),
+              FilledButton.icon(
+                key: const Key('saveDischargeReport'),
+                onPressed: saving
+                    ? null
+                    : () async {
+                        if (saving) return;
+                        updateDialog(() {
+                          saving = true;
+                          saveError = null;
+                        });
+                        try {
+                          final saved = await controller.saveDischargeReport(
+                            result,
+                            fileName,
+                          );
+                          if (!dialogContext.mounted) return;
+                          Navigator.of(
+                            dialogContext,
+                          ).pop(saved['report_id'] as int?);
+                          showMessage(
+                            'Report saved successfully',
+                            isError: false,
+                          );
+                        } on ApiException catch (error) {
+                          if (dialogContext.mounted) {
+                            updateDialog(() => saveError = error.message);
+                          }
+                        } catch (_) {
+                          if (dialogContext.mounted) {
+                            updateDialog(
+                              () => saveError =
+                                  'Unable to save this report. Your extraction is still here. Please retry.',
+                            );
+                          }
+                        } finally {
+                          if (dialogContext.mounted) {
+                            updateDialog(() => saving = false);
+                          }
+                        }
+                      },
+                icon: saving
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.save_outlined),
+                label: Text(
+                  saving
+                      ? 'Saving report...'
+                      : saveError != null
+                      ? 'Retry'
+                      : 'Save report',
+                ),
+              ),
+              TextButton(
+                onPressed: saving
+                    ? null
+                    : () => Navigator.of(dialogContext).pop(),
+                child: const Text('Close'),
+              ),
+            ],
           ),
         ),
-        actions: [
-          FilledButton.icon(
-            key: const Key('saveDischargeReport'),
-            onPressed: () async {
-              try {
-                final saved = await controller.saveDischargeReport(
-                  result,
-                  fileName,
-                );
-                if (!dialogContext.mounted) return;
-                Navigator.of(dialogContext).pop(saved['report_id'] as int?);
-                showMessage(
-                  'Report saved to your medical reports.',
-                  isError: false,
-                );
-              } on ApiException catch (error) {
-                showMessage(error.message);
-              } catch (_) {
-                showMessage('Unable to save this report. Please try again.');
-              }
-            },
-            icon: const Icon(Icons.save_outlined),
-            label: const Text('Save report'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Close'),
-          ),
-        ],
       ),
     );
   } on ApiException catch (error) {

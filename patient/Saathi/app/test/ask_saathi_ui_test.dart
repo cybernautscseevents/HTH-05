@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -17,18 +18,27 @@ class _FakeReportApi extends ApiClient {
   final languages = <String>[];
   bool hasReport = true;
   bool longReview = false;
+  bool failSave = false;
+  bool failRefresh = false;
+  int saves = 0;
+  Completer<void>? saveGate;
 
   @override
-  Future<List<Map<String, dynamic>>> getDischargeReports(String token) async =>
-      hasReport
-      ? [
-          {
-            'report_id': 7,
-            'hospital_name': 'Sample General Hospital',
-            'original_filename': 'fictional.pdf',
-          },
-        ]
-      : [];
+  Future<List<Map<String, dynamic>>> getDischargeReports(String token) async {
+    if (failRefresh && hasReport) {
+      throw const ApiException('Refresh unavailable', statusCode: 503);
+    }
+    return hasReport
+        ? [
+            {
+              'report_id': 7,
+              'patient_id': 1,
+              'hospital_name': 'Sample General Hospital',
+              'original_filename': 'fictional.pdf',
+            },
+          ]
+        : [];
+  }
 
   @override
   Future<Map<String, dynamic>> summarizeDischargeDocument({
@@ -62,8 +72,21 @@ class _FakeReportApi extends ApiClient {
     required String token,
     required Map<String, dynamic> report,
   }) async {
+    saves++;
+    if (saveGate != null) await saveGate!.future;
+    if (failSave) {
+      throw const ApiException(
+        'Report storage is unavailable.',
+        statusCode: 503,
+      );
+    }
     hasReport = true;
-    return {'report_id': 7};
+    return {
+      ...report,
+      'report_id': 7,
+      'patient_id': 1,
+      'hospital_name': 'Sample General Hospital',
+    };
   }
 
   @override
@@ -356,6 +379,77 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(AskSaathiSheet), findsOneWidget);
   });
+
+  testWidgets(
+    'save shows progress, prevents repeat taps, retains errors and retries into chat',
+    (tester) async {
+      FlutterSecureStorage.setMockInitialValues({
+        'patient_device_token': 'widget-token',
+        'patient_id': '1',
+      });
+      final api = _FakeReportApi()
+        ..hasReport = false
+        ..failSave = true
+        ..saveGate = Completer<void>();
+      final controller = AppController(
+        api: api,
+        storage: const FlutterSecureStorage(),
+      );
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        channel,
+        (call) async => {
+          'name': 'fictional.pdf',
+          'bytes': Uint8List.fromList([37, 80, 68, 70]),
+        },
+      );
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          channel,
+          null,
+        ),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildSaathiTheme(),
+          home: Scaffold(body: AskSaathiSheet(controller: controller)),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Add Document'));
+      // The sheet deliberately stays in its uploading state until review closes.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      final button = find.byKey(const Key('saveDischargeReport'));
+      await tester.tap(button);
+      await tester.pump();
+      expect(find.text('Saving report...'), findsOneWidget);
+      await tester.tap(button);
+      await tester.pump();
+      expect(api.saves, 1);
+      api.saveGate!.complete();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byKey(const Key('dischargeReportSaveError')), findsOneWidget);
+      expect(find.text('Report storage is unavailable.'), findsOneWidget);
+      expect(find.text('Fictional report summary.'), findsOneWidget);
+      expect(find.text('Report saved successfully'), findsNothing);
+      api.failSave = false;
+      api.failRefresh = true;
+      await tester.tap(find.text('Retry'));
+      await tester.pumpAndSettle();
+      expect(find.text('Your discharge summary'), findsNothing);
+      expect(find.byKey(const Key('askSaathiReportSelector')), findsOneWidget);
+      expect(find.text('Report saved successfully'), findsOneWidget);
+      await tester.enterText(
+        find.byKey(const Key('askSaathiComposer')),
+        'What is my dose?',
+      );
+      await tester.tap(find.byKey(const Key('askSaathiSend')));
+      await tester.pumpAndSettle();
+      expect(api.questions, ['What is my dose?']);
+      expect(api.saves, 2);
+    },
+  );
 
   testWidgets('keyboard inset keeps the sheet composer visible', (
     tester,

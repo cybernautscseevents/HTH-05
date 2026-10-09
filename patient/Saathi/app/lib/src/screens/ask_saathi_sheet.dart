@@ -64,8 +64,18 @@ class _AskSaathiSheetState extends State<AskSaathiSheet> {
   }
 
   Future<void> _loadReports({int? preferred}) async {
+    final confirmed = widget.controller.savedDischargeReports;
     setState(() {
-      _loadingReports = true;
+      if (confirmed.isNotEmpty) {
+        _reports = confirmed;
+        final ids = confirmed.map((report) => report['report_id']).toSet();
+        _selectedReportId = ids.contains(preferred)
+            ? preferred
+            : ids.contains(_selectedReportId)
+            ? _selectedReportId
+            : confirmed.first['report_id'] as int;
+      }
+      _loadingReports = confirmed.isEmpty;
       _reportsError = null;
     });
     try {
@@ -89,6 +99,12 @@ class _AskSaathiSheetState extends State<AskSaathiSheet> {
           if (mounted) _send();
         });
       }
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loadingReports = false;
+        _reportsError = error.message;
+      });
     } catch (_) {
       if (!mounted) return;
       setState(() {

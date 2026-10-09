@@ -45,6 +45,17 @@ class AppController extends ChangeNotifier {
 
   AppStatus status = AppStatus.loading;
   Patient? patient;
+  List<Map<String, dynamic>> _savedDischargeReports = [];
+  String? _reportSessionToken;
+  int? _reportPatientId;
+
+  List<Map<String, dynamic>> get savedDischargeReports => _savedDischargeReports
+      .where(
+        (report) =>
+            report['patient_id'] == _reportPatientId &&
+            (patient == null || patient!.id == _reportPatientId),
+      )
+      .toList(growable: false);
 
   /// The patient's chosen language. Persisted on the device, so the app opens
   /// in their language every time without them having to set it again.
@@ -190,6 +201,11 @@ class AppController extends ChangeNotifier {
     final patientIdStr = await _storage.read(key: _patientIdKey);
     final patientId = patientIdStr != null ? int.tryParse(patientIdStr) : null;
     if (token == null || patientId == null) return null;
+    if (_reportSessionToken != token) {
+      _savedDischargeReports = [];
+      _reportSessionToken = token;
+    }
+    _reportPatientId = patientId;
     return (token, patientId);
   }
 
@@ -233,13 +249,25 @@ class AppController extends ChangeNotifier {
         'doctor_name': extracted['doctor'],
       },
     );
-    // Refresh only patient-approved plans after the report has been saved.
-    try {
-      await fetchDischargeReports();
-    } catch (_) {
-      // The report is already saved; a refresh failure must not report a
-      // failed save or cause a second upload of the same document.
+    if (saved['report_id'] is! int ||
+        (saved['report_id'] as int) <= 0 ||
+        saved['patient_id'] != credentials.$2) {
+      throw const ApiException(
+        'The server did not confirm a saved report for your account. Keep this summary open and retry.',
+      );
     }
+    _savedDischargeReports = [
+      saved,
+      ..._savedDischargeReports.where(
+        (r) => r['report_id'] != saved['report_id'],
+      ),
+    ];
+    notifyListeners();
+    // Persistence is confirmed. Refresh in the background so a slow GET does
+    // not delay success or cause the patient to retry an already committed save.
+    unawaited(
+      fetchDischargeReports().catchError((Object _) => savedDischargeReports),
+    );
     return saved;
   }
 
@@ -248,7 +276,16 @@ class AppController extends ChangeNotifier {
     if (credentials == null || testLoginMatchesStoredToken(credentials.$1)) {
       return [];
     }
-    final reports = await api.getDischargeReports(credentials.$1);
+    List<Map<String, dynamic>> reports;
+    try {
+      reports = await api.getDischargeReports(credentials.$1);
+    } on ApiException catch (error) {
+      if (error.statusCode == 401 || error.statusCode == 403) rethrow;
+      final confirmed = savedDischargeReports;
+      if (confirmed.isEmpty) rethrow;
+      return confirmed;
+    }
+    _savedDischargeReports = reports;
     if (patient != null && patient!.id == credentials.$2) {
       await ReminderService.instance.reconcileReportPlans(
         patient: patient!,

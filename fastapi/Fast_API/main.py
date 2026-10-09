@@ -263,7 +263,10 @@ def _clean_discharge_chat_answer(answer: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
 
 @app.get("/")
-def home(): return {"message": "Welcome to Saathi API"}
+def home():
+    return {"message": "Welcome to Saathi API",
+            "build_commit": os.getenv("RENDER_GIT_COMMIT"),
+            "build_branch": os.getenv("RENDER_GIT_BRANCH")}
 
 @app.post("/patients/me/discharge-summary")
 async def summarize_discharge_document(
@@ -513,6 +516,42 @@ def discharge_report_response(report: PatientDischargeReport) -> dict:
     }
 
 
+def require_discharge_report_storage(db: Session):
+    """Read-only schema check. Never create storage in the shared database."""
+    table = PatientDischargeReport.__tablename__
+    if db.get_bind().dialect.name == "mysql":
+        # information_schema works with Aiven's ANSI_QUOTES and avoids parsing
+        # SHOW CREATE TABLE output when a connection's SQL mode changes.
+        columns = set(db.execute(text(
+            "SELECT COLUMN_NAME FROM information_schema.COLUMNS "
+            "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :table"
+        ), {"table": table}).scalars())
+    else:
+        schema = inspect(db.connection())
+        columns = {column["name"] for column in schema.get_columns(table)} if schema.has_table(table) else set()
+    if not columns:
+        logging.getLogger("saathi.discharge_reports").error("Missing storage table: %s", table)
+        raise HTTPException(503, "Report storage is unavailable: the patient_discharge_reports table has not been provisioned. Contact the backend administrator. Your extracted report has not been saved.")
+    missing = set(PatientDischargeReport.__table__.columns.keys()) - columns
+    if missing:
+        logging.getLogger("saathi.discharge_reports").error("Report storage missing columns: %s", ", ".join(sorted(missing)))
+        raise HTTPException(503, "Report storage schema is incompatible. Contact the backend administrator; your extracted report has not been saved.")
+
+
+def discharge_storage_failure(db: Session, exc: SQLAlchemyError):
+    db.rollback()
+    # SQL and bound parameters may contain patient information. Log only driver
+    # type/code; never stringify the exception or include its parameters.
+    original = getattr(exc, "orig", None)
+    args = getattr(original, "args", ())
+    code = args[0] if args and isinstance(args[0], int) else None
+    logging.getLogger("saathi.discharge_reports").error(
+        "Report storage operation failed (exception=%s, driver_code=%s)",
+        type(exc).__name__, code,
+    )
+    return HTTPException(503, "Unable to confirm report storage. Keep this summary open and retry. If this continues, contact the backend administrator.")
+
+
 @app.post("/patients/me/discharge-reports", status_code=201)
 def save_discharge_report(
     data: PatientDischargeReportSave,
@@ -523,12 +562,16 @@ def save_discharge_report(
     if not patient_id:
         raise HTTPException(401, "Patient account is not linked to this session")
     patient_or_404(db, patient_id)
-    existing = db.query(PatientDischargeReport).filter(
-        PatientDischargeReport.patient_id == patient_id,
-        PatientDischargeReport.document_reference == data.document_reference,
-    ).first()
-    if existing:
-        return discharge_report_response(existing)
+    try:
+        require_discharge_report_storage(db)
+        existing = db.query(PatientDischargeReport).filter(
+            PatientDischargeReport.patient_id == patient_id,
+            PatientDischargeReport.document_reference == data.document_reference,
+        ).first()
+        if existing:
+            return discharge_report_response(existing)
+    except SQLAlchemyError as exc:
+        raise discharge_storage_failure(db, exc) from None
     report = PatientDischargeReport(
         patient_id=patient_id,
         hospital_name=data.hospital_name,
@@ -540,10 +583,27 @@ def save_discharge_report(
         structured_data=data.structured_data,
         summary=data.summary.strip(),
     )
-    db.add(report)
-    db.commit()
-    db.refresh(report)
-    return discharge_report_response(report)
+    try:
+        db.add(report)
+        db.commit()
+        db.refresh(report)
+        return discharge_report_response(report)
+    except IntegrityError as exc:
+        db.rollback()
+        # A concurrent save/retry of this patient's document can win the unique
+        # key race. Return that committed record, never create a second report.
+        try:
+            existing = db.query(PatientDischargeReport).filter(
+                PatientDischargeReport.patient_id == patient_id,
+                PatientDischargeReport.document_reference == data.document_reference,
+            ).first()
+            if existing:
+                return discharge_report_response(existing)
+        except SQLAlchemyError as lookup_error:
+            raise discharge_storage_failure(db, lookup_error) from None
+        raise discharge_storage_failure(db, exc) from None
+    except SQLAlchemyError as exc:
+        raise discharge_storage_failure(db, exc) from None
 
 
 @app.get("/patients/me/discharge-reports")
@@ -554,9 +614,13 @@ def list_discharge_reports(
     patient_id = user.get("patient_id")
     if not patient_id:
         raise HTTPException(401, "Patient account is not linked to this session")
-    return [discharge_report_response(r) for r in db.query(PatientDischargeReport)
-            .filter(PatientDischargeReport.patient_id == patient_id)
-            .order_by(PatientDischargeReport.uploaded_at.desc()).all()]
+    try:
+        require_discharge_report_storage(db)
+        return [discharge_report_response(r) for r in db.query(PatientDischargeReport)
+                .filter(PatientDischargeReport.patient_id == patient_id)
+                .order_by(PatientDischargeReport.uploaded_at.desc()).all()]
+    except SQLAlchemyError as exc:
+        raise discharge_storage_failure(db, exc) from None
 
 
 @app.post("/patients/me/discharge-chat")
@@ -570,10 +634,14 @@ async def discharge_report_chat(
     patient_id = user.get("patient_id")
     if not patient_id:
         raise HTTPException(401, "Patient account is not linked to this session")
-    report = db.query(PatientDischargeReport).filter(
-        PatientDischargeReport.report_id == data.report_id,
-        PatientDischargeReport.patient_id == patient_id,
-    ).first()
+    try:
+        require_discharge_report_storage(db)
+        report = db.query(PatientDischargeReport).filter(
+            PatientDischargeReport.report_id == data.report_id,
+            PatientDischargeReport.patient_id == patient_id,
+        ).first()
+    except SQLAlchemyError as exc:
+        raise discharge_storage_failure(db, exc) from None
     if not report:
         raise HTTPException(404, "Saved discharge report not found")
     api_key = os.getenv("GROQ_API_KEY", "").strip()

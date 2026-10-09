@@ -11,7 +11,7 @@ from main import (
 )
 
 
-PDF = Path(__file__).resolve().parents[2] / "output" / "pdf" / "saathi_fictional_discharge_summary.pdf"
+PDF = Path(__file__).with_name("test_fixtures") / "fictional_discharge_summary.pdf"
 
 
 class DischargeExtractionRegressionTests(unittest.TestCase):
