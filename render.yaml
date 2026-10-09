@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: saathi-api-new
+    runtime: python
+    rootDir: fastapi/Fast_API
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: AIVEN_CA_CERT
+        value: /etc/secrets/ca.pem
+      - key: AIVEN_DB_PASSWORD
+        sync: false
+      - key: SAATHI_SECRET_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false

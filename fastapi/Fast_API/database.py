@@ -1,11 +1,13 @@
 import os
-import ssl
-
 from sqlalchemy import create_engine
 from sqlalchemy.engine import URL, make_url
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 from env_config import get_required_env
+from aiven_tls import load_aiven_ca
+
+
+_AIVEN_CA_TEMP_DIRECTORIES = []
 
 
 def _database_url() -> tuple[URL, dict[str, object]]:
@@ -28,15 +30,9 @@ def _database_url() -> tuple[URL, dict[str, object]]:
 
     connect_args: dict[str, object] = {}
     if url.host and url.host.lower().endswith(".aivencloud.com"):
-        ca_file = os.getenv("AIVEN_CA_CERT")
-        if not ca_file:
-            raise RuntimeError("AIVEN_CA_CERT is required for verified Aiven TLS.")
-        if not os.path.isfile(ca_file):
-            raise RuntimeError("The configured Aiven CA certificate file does not exist.")
-        tls_context = ssl.create_default_context()
-        tls_context.load_verify_locations(cafile=ca_file)
-        tls_context.verify_mode = ssl.CERT_REQUIRED
-        tls_context.check_hostname = True
+        tls_context, temporary_directory = load_aiven_ca()
+        if temporary_directory is not None:
+            _AIVEN_CA_TEMP_DIRECTORIES.append(temporary_directory)
         connect_args["ssl"] = tls_context
 
     return url, connect_args
