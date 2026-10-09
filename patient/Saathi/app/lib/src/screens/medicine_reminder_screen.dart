@@ -20,7 +20,7 @@ class MedicineReminderScreen extends StatefulWidget {
   State<MedicineReminderScreen> createState() => _MedicineReminderScreenState();
 }
 
-enum _TakenState { pending, confirmed }
+enum _TakenState { pending, confirmed, skipped }
 
 class _MedicineReminderScreenState extends State<MedicineReminderScreen> {
   var taken = _TakenState.pending;
@@ -32,7 +32,7 @@ class _MedicineReminderScreenState extends State<MedicineReminderScreen> {
     final colors = context.saathiColors;
 
     return PopScope(
-      canPop: taken == _TakenState.confirmed,
+      canPop: true,
       child: Scaffold(
         backgroundColor: colors.primaryTint,
         body: SafeArea(
@@ -175,11 +175,30 @@ class _MedicineReminderScreenState extends State<MedicineReminderScreen> {
                 const SizedBox(height: 28),
                 if (taken == _TakenState.confirmed)
                   _ConfirmedBanner(text: text(T.reminderTakenConfirm))
+                else if (taken == _TakenState.skipped)
+                  const _ConfirmedBanner(text: 'Skipped and recorded')
                 else ...[
                   FilledButton.icon(
-                    onPressed: () {
+                    onPressed: () async {
+                      try {
+                        await ReminderService.instance.recordReminderAction(
+                          content,
+                          'taken',
+                        );
+                      } catch (error) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Could not record dose: $error'),
+                            ),
+                          );
+                        }
+                        return;
+                      }
                       ReminderService.instance.stopSpeaking();
-                      setState(() => taken = _TakenState.confirmed);
+                      if (mounted) {
+                        setState(() => taken = _TakenState.confirmed);
+                      }
                     },
                     style: FilledButton.styleFrom(
                       backgroundColor: colors.primaryStrong,
@@ -194,9 +213,21 @@ class _MedicineReminderScreenState extends State<MedicineReminderScreen> {
                   ),
                   const SizedBox(height: 12),
                   OutlinedButton.icon(
-                    onPressed: () {
+                    onPressed: () async {
+                      try {
+                        await ReminderService.instance.snoozeMedicineReminder(
+                          content,
+                        );
+                      } catch (error) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Could not snooze: $error')),
+                          );
+                        }
+                        return;
+                      }
                       ReminderService.instance.stopSpeaking();
-                      Navigator.of(context).maybePop();
+                      if (context.mounted) Navigator.of(context).pop();
                     },
                     style: OutlinedButton.styleFrom(
                       backgroundColor: colors.surface,
@@ -204,6 +235,30 @@ class _MedicineReminderScreenState extends State<MedicineReminderScreen> {
                     ),
                     icon: const Icon(Icons.snooze_rounded),
                     label: Text(text(T.reminderSnooze)),
+                  ),
+                  const SizedBox(height: 12),
+                  TextButton.icon(
+                    onPressed: () async {
+                      try {
+                        await ReminderService.instance.recordReminderAction(
+                          content,
+                          'skipped',
+                        );
+                      } catch (error) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Could not record skip: $error'),
+                            ),
+                          );
+                        }
+                        return;
+                      }
+                      ReminderService.instance.stopSpeaking();
+                      if (mounted) setState(() => taken = _TakenState.skipped);
+                    },
+                    icon: const Icon(Icons.not_interested_rounded),
+                    label: const Text('Skip this dose'),
                   ),
                   const SizedBox(height: 12),
                   TextButton.icon(

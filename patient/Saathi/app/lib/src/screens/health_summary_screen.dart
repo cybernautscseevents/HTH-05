@@ -528,11 +528,10 @@ class _SavedCarePlanPanelState extends State<_SavedCarePlanPanel> {
         if (language == AppLanguage.kannada &&
             _translationId != report['report_id']) {
           _translationId = report['report_id'] as int;
-          _translation = widget.controller.askDischargeQuestion(
+          _translation = widget.controller.cachedKannadaCarePlan(
             reportId: _translationId!,
             question:
                 'Explain the condition and the documented recovery plan in Kannada. Include the documented medicine instructions, warning signs, follow-up and discharge instructions. Clearly mark missing details. Do not add or change medical instructions.',
-            language: 'Kannada',
           );
         }
         final translated = language == AppLanguage.kannada

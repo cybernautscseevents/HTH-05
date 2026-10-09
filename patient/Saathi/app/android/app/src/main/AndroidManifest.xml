@@ -2,16 +2,14 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- Runtime-requested on Android 13+ for medicine-time reminder
-         notifications (flutter_local_notifications). -->
+    <!-- Requested when a patient enables or tests reminders on Android 13+. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Allows scheduled appointment & medicine notifications to be restored after a
          device restart or app update. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <!-- Exact alarms and wake locks for medicine reminders to wake up device
-         and pop up on mobile home screen at doctor-assigned times. -->
+    <!-- Exact timing is used only if Android grants access; scheduling falls
+         back to inexact delivery when that access is unavailable. -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
-    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
@@ -19,7 +17,7 @@
         android:label="Saathi"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
-        android:usesCleartextTraffic="true">
+        android:usesCleartextTraffic="false">
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

@@ -45,7 +45,7 @@ void main() {
   });
 
   testWidgets(
-    '"I have taken it" shows a confirmation and hides the action buttons',
+    'an unscheduled preview cannot falsely confirm a recorded dose',
     (tester) async {
       await pumpReminder(tester);
 
@@ -54,9 +54,9 @@ void main() {
       await tester.tap(find.text('I HAVE TAKEN IT'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Well done. Noted.'), findsOneWidget);
-      expect(find.text('I HAVE TAKEN IT'), findsNothing);
-      expect(find.text('REMIND ME IN 10 MINUTES'), findsNothing);
+      expect(find.text('Well done. Noted.'), findsNothing);
+      expect(find.text('I HAVE TAKEN IT'), findsOneWidget);
+      expect(find.textContaining('no saved schedule'), findsOneWidget);
     },
   );
 }

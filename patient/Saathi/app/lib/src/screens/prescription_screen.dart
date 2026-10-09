@@ -420,13 +420,22 @@ class _UploadedReportPrescriptionCard extends StatelessWidget {
                 raw['name']?.toString() ?? 'Medicine',
                 style: const TextStyle(fontWeight: FontWeight.w700),
               ),
+              if (raw['source_text']?.toString().trim().isNotEmpty == true)
+                Text('Original prescription: ${raw['source_text']}'),
+              if (raw['patient_explanation']?.toString().trim().isNotEmpty ==
+                  true)
+                Text('In simple words: ${raw['patient_explanation']}'),
               Text(
                 [
+                      raw['strength'],
                       raw['dose'],
                       raw['route'],
                       raw['frequency'],
                       raw['duration'],
                       raw['timing'],
+                      raw['food_timing'],
+                      raw['start_date'],
+                      raw['end_date'],
                       raw['instructions'],
                     ]
                     .where(

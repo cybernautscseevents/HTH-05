@@ -60,7 +60,7 @@ class AuthProvider with ChangeNotifier {
     _isLoading = true;
     notifyListeners();
 
-    debugPrint('[AuthProvider.signIn] username=$username, expectedRole=$expectedRole, useMock=$_useMockApi');
+    debugPrint('[AuthProvider.signIn] Starting login, useMock=$_useMockApi');
 
     try {
       late final LoginResponse response;
@@ -71,7 +71,7 @@ class AuthProvider with ChangeNotifier {
         response = await _apiClient.login(username, password);
       }
 
-      debugPrint('[AuthProvider.signIn] Login response received, role=${response.staff.role}, userId=${response.staff.id}');
+      debugPrint('[AuthProvider.signIn] Login response received, role=${response.staff.role}');
 
       final returnedRole = response.staff.role.toLowerCase();
       final expectedRoleLower = expectedRole.toLowerCase();
@@ -104,9 +104,9 @@ class AuthProvider with ChangeNotifier {
       await _storage.write(key: 'full_name', value: _fullName);
       await _storage.write(key: 'user_id', value: _userId.toString());
 
-      debugPrint('[AuthProvider.signIn] Session stored successfully, role=$_role, userId=$_userId');
+      debugPrint('[AuthProvider.signIn] Session stored successfully, role=$_role');
     } catch (e) {
-      debugPrint('[AuthProvider.signIn] Exception: ${e.runtimeType} — $e');
+      debugPrint('[AuthProvider.signIn] Failed with ${e.runtimeType}');
       rethrow;
     } finally {
       _isLoading = false;

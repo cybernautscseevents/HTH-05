@@ -213,7 +213,7 @@ void main() {
       find.text('Hear your name, medicine and condition now.'),
       findsOneWidget,
     );
-    expect(find.text('TEST A MEDICINE REMINDER'), findsOneWidget);
+    expect(find.text('Test notification in 30 seconds'), findsOneWidget);
   });
 
   group('responsiveness', () {

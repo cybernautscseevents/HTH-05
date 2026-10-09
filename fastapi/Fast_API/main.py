@@ -328,10 +328,12 @@ async def summarize_discharge_document(
     schema = {
         "patient_name": None, "hospital": None, "doctor": None,
         "discharge_date": None, "diagnosis": None, "condition_explanation": None,
-        "medicines": [{"name": "", "dose": None, "route": None, "frequency": None,
-                       "duration": None, "timing": None, "start_date": None,
-                       "end_date": None, "instructions": None,
-                       "source_text": "", "missing_details": []}],
+        "medicines": [{"name": "", "strength": None, "dose": None,
+                       "route": None, "frequency": None, "duration": None,
+                       "timing": None, "food_timing": None, "start_date": None,
+                       "end_date": None, "as_needed": False,
+                       "instructions": None, "source_text": "",
+                       "patient_explanation": None, "missing_details": []}],
         "warning_signs": [], "follow_up": [{"date": None, "time": None, "doctor": None,
                                                "hospital": None, "purpose": None,
                                                "instructions": None}],
@@ -350,6 +352,11 @@ async def summarize_discharge_document(
         "BOOKED, state that clearly and retain the instruction to contact the clinic. "
         "Recognize route explicitly stated in directions: for example, a named "
         "solution with 'prepare and drink' means oral; otherwise leave route null. "
+        "For each medicine, source_text must quote its original prescription wording. "
+        "Extract strength, explicit clock times in timing, food directions in food_timing, "
+        "and as_needed only when the source says as needed or PRN. "
+        "patient_explanation must use simple everyday language grounded in the same "
+        "medicine fields; never turn 'at night' into a clock time. "
         "For each medication, flag dose, start/end date, or instruction as missing "
         "only when it is absent from the source; do not silently fill it in. "
         "Preserve documented medicine start/end dates and follow-up time. "
@@ -359,7 +366,7 @@ async def summarize_discharge_document(
         "or not documented must be listed in unclear_details. Do not treat a field "
         "as missing solely because the document does not mention it. "
         "Explain the diagnosis in simple language only if stated facts support it. "
-        "warning_signs must contain only signs explicitly documented. summary is a "
+        "warning_signs must contain only signs explicitly documented. "
         "Write summary as 2–5 short sentences in everyday patient-friendly language, "
         "grounded only in the source. Keep the medical diagnosis separate from its plain-language "
         "meaning; include relevant documented medicines, warning signs, recommended follow-up "
@@ -384,15 +391,19 @@ async def summarize_discharge_document(
 
         class ExtractedMedicine(BaseModel):
             name: str
+            strength: str | None = None
             dose: str | None = None
             route: str | None = None
             frequency: str | None = None
             duration: str | None = None
             timing: str | None = None
+            food_timing: str | None = None
             start_date: str | None = None
             end_date: str | None = None
+            as_needed: bool = False
             instructions: str | None = None
             source_text: str | None = None
+            patient_explanation: str | None = None
             missing_details: list[str] = Field(default_factory=list)
 
         class ExtractedFollowUp(BaseModel):

@@ -7,6 +7,7 @@ import '../api_client.dart';
 import '../l10n/app_text.dart';
 import '../models.dart';
 import '../services/reminder_service.dart';
+import '../services/reminder_plan.dart';
 import '../theme.dart';
 import '../widgets/patient_scaffold.dart';
 import '../widgets/patient_widgets.dart';
@@ -839,6 +840,94 @@ class _ReportFollowups extends StatefulWidget {
 class _ReportFollowupsState extends State<_ReportFollowups> {
   late Future<List<Map<String, dynamic>>> _reports;
 
+  Future<void> _enableFollowup(
+    Map<String, dynamic> report,
+    Map item,
+    int index,
+  ) async {
+    final patient = widget.controller.patient;
+    final reportId = report['report_id'];
+    final date = parseCarePlanDate(item['date']);
+    if (patient == null || reportId is! int || date == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'A documented follow-up date is needed for a reminder.',
+          ),
+        ),
+      );
+      return;
+    }
+    final written = explicitClockTimes(item['time']?.toString() ?? '');
+    TimeOfDay? clock = written.isNotEmpty ? written.first : null;
+    if (clock == null) {
+      clock = await showTimePicker(
+        context: context,
+        initialTime: TimeOfDay.now(),
+        helpText: 'Choose your personal follow-up reminder time',
+      );
+      if (clock == null) return;
+    }
+    final followupTime = DateTime(
+      date.year,
+      date.month,
+      date.day,
+      clock.hour,
+      clock.minute,
+    );
+    if (!mounted) return;
+    final offset = await showDialog<int>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Recommended follow-up — not booked'),
+        content: Text(
+          'Follow-up: ${item['purpose'] ?? 'Review'}\n'
+          'Date: ${item['date']} · ${ReminderService.formatTimeOfDay(clock!)}\n'
+          'Choose when Saathi should remind you. Contact the clinic to book.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 1440),
+            child: const Text('1 day before'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, 60),
+            child: const Text('1 hour before'),
+          ),
+        ],
+      ),
+    );
+    if (offset == null) return;
+    try {
+      await ReminderService.instance.scheduleRecommendedFollowup(
+        patientId: patient.id,
+        reportId: reportId,
+        followupIndex: index,
+        reminderTime: followupTime.subtract(Duration(minutes: offset)),
+        description: item['purpose']?.toString() ?? 'Follow-up review',
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Personal follow-up reminder scheduled on this phone.',
+            ),
+          ),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not set follow-up reminder: $error')),
+        );
+      }
+    }
+  }
+
   void reload() => setState(() {
     _reports = widget.controller.fetchDischargeReports();
   });
@@ -866,16 +955,18 @@ class _ReportFollowupsState extends State<_ReportFollowups> {
         );
       }
       final reports = snapshot.data ?? const <Map<String, dynamic>>[];
-      final followups = <(Map<String, dynamic>, Map)>[];
+      final followups = <(Map<String, dynamic>, Map, int)>[];
       for (final report in reports) {
         final data = report['structured_data'];
         final items = data is Map ? data['follow_up'] : null;
         if (items is List) {
-          for (final item in items.whereType<Map>()) {
+          for (var index = 0; index < items.length; index++) {
+            final item = items[index];
+            if (item is! Map) continue;
             if (item.values.any(
               (value) => value != null && value.toString().trim().isNotEmpty,
             )) {
-              followups.add((report, item));
+              followups.add((report, item, index));
             }
           }
         }
@@ -912,6 +1003,12 @@ class _ReportFollowupsState extends State<_ReportFollowups> {
                 Text(
                   'Source: ${entry.$1['hospital_name'] ?? entry.$1['original_filename']}',
                   style: TextStyle(color: colors.textMuted, fontSize: 12),
+                ),
+                TextButton.icon(
+                  onPressed: () =>
+                      _enableFollowup(entry.$1, entry.$2, entry.$3),
+                  icon: const Icon(Icons.notifications_active_outlined),
+                  label: const Text('Set personal follow-up reminder'),
                 ),
               ],
             ],

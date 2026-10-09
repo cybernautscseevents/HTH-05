@@ -4,7 +4,6 @@ import 'package:flutter/services.dart';
 import '../app_controller.dart';
 // placeholder_data removed — test reminder uses a generic medicine name
 import '../l10n/app_text.dart';
-import '../l10n/local_disease_names.dart';
 import '../services/reminder_service.dart';
 import '../settings.dart';
 import '../theme.dart';
@@ -192,8 +191,6 @@ class _Section extends StatelessWidget {
     );
   }
 }
-
-
 
 /// A horizontal row of equal-width pill buttons — one per [values] entry.
 ///
@@ -549,27 +546,134 @@ class _VoiceSection extends StatelessWidget {
           const SizedBox(height: 8),
           FilledButton.icon(
             key: const Key('test-medicine-reminder'),
-            onPressed: () {
-              final patient = controller.patient;
-              // Generic medicine name used for the test reminder preview.
-              // The real reminder system (dose-tracking, scheduling) will be
-              // implemented in a future increment.
-              ReminderService.instance.trigger(
-                context,
-                ReminderContent(
-                  patientName: patient?.name ?? text(T.appName),
-                  medicineName: 'Medicine',
-                  instruction: text(T.afterFood),
-                  diseaseName: LocalDiseaseName.forCondition(
-                    patient?.condition ?? 'chronic condition',
-                    controller.language,
-                  ),
-                  language: controller.language,
-                ),
-              );
+            onPressed: () async {
+              try {
+                await ReminderService.instance.scheduleTestNotification();
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Test notification scheduled in 30 seconds.',
+                      ),
+                    ),
+                  );
+                }
+              } catch (error) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Notifications unavailable: $error'),
+                    ),
+                  );
+                }
+              }
             },
             icon: const Icon(Icons.notifications_active_rounded),
-            label: Text(text(T.settingsTestReminder)),
+            label: const Text('Test notification in 30 seconds'),
+          ),
+          TextButton.icon(
+            onPressed: controller.patient == null
+                ? null
+                : () {
+                    final history = ReminderService.instance.reminderHistory(
+                      controller.patient!.id,
+                    );
+                    showDialog<void>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('Reminder history on this phone'),
+                        content: SizedBox(
+                          width: 360,
+                          height: 340,
+                          child: FutureBuilder<List<Map<String, dynamic>>>(
+                            future: history,
+                            builder: (ctx, snapshot) {
+                              if (!snapshot.hasData) {
+                                return const Center(
+                                  child: CircularProgressIndicator(),
+                                );
+                              }
+                              final entries = snapshot.data!;
+                              if (entries.isEmpty) {
+                                return const Text(
+                                  'No doses recorded on this phone.',
+                                );
+                              }
+                              return ListView.builder(
+                                itemCount: entries.length,
+                                itemBuilder: (ctx, index) {
+                                  final entry = entries[index];
+                                  return ListTile(
+                                    title: Text(
+                                      entry['medicineName']?.toString() ??
+                                          'Medicine',
+                                    ),
+                                    subtitle: Text(
+                                      '${entry['scheduledDate']} · ${entry['timeSlot']} · '
+                                      '${entry['sourceKey']?.toString().startsWith('pdf:') == true ? 'Uploaded report' : 'Saathi doctor'}',
+                                    ),
+                                    trailing: Text(
+                                      entry['status']?.toString() ?? '',
+                                    ),
+                                  );
+                                },
+                              );
+                            },
+                          ),
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            child: const Text('Close'),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+            icon: const Icon(Icons.history_rounded),
+            label: const Text('Reminder history'),
+          ),
+          const SizedBox(height: 8),
+          FutureBuilder(
+            future: ReminderService.instance.status(),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) return const SizedBox.shrink();
+              final status = snapshot.data!;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${status.notifications ? 'Notifications enabled' : 'Notifications disabled'} · '
+                    '${status.exact ? 'Exact timing available' : 'Android may delay reminders'} · '
+                    '${status.pending} pending alerts. Battery restrictions may also delay delivery.',
+                    style: TextStyle(color: context.saathiColors.textMuted),
+                  ),
+                  if (!status.exact)
+                    TextButton(
+                      onPressed: () async {
+                        final allowed = await ReminderService.instance
+                            .requestExactTiming();
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                allowed
+                                    ? 'Precise timing allowed. Reopen reminders to refresh schedules.'
+                                    : 'Precise timing unavailable; Android may delay alerts.',
+                              ),
+                            ),
+                          );
+                        }
+                      },
+                      child: const Text('Check precise timing access'),
+                    ),
+                  if (!status.notifications)
+                    const Text(
+                      'Allow Saathi notifications in Android app settings, then retry the test.',
+                    ),
+                ],
+              );
+            },
           ),
         ],
       ),

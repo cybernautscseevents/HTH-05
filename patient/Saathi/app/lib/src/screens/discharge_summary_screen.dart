@@ -274,14 +274,18 @@ class _ExtractedCarePlan extends StatelessWidget {
         const Text('Medicines', style: TextStyle(fontWeight: FontWeight.w800)),
       );
       for (final item in medicines.whereType<Map>()) {
+        add('Original prescription', item['source_text']?.toString());
+        add('In simple words', item['patient_explanation']?.toString());
         final lines =
             [
               item['name'],
+              item['strength'],
               item['dose'],
               item['route'],
               item['frequency'],
               item['duration'],
               item['timing'],
+              item['food_timing'],
               item['start_date'],
               item['end_date'],
               item['instructions'],

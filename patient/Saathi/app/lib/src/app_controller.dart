@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:intl/intl.dart';
 
 import 'api_client.dart';
 // ⚠️ TEST-ONLY — delete with the three testLogin* guards below. See
@@ -132,25 +131,19 @@ class AppController extends ChangeNotifier {
     );
     ReminderService.instance.speechRate = voiceSpeed.rate;
 
-    // Request notification and exact alarm permissions on start/install so alarms
-    // and heads-up home-screen pop-ups function immediately.
-    try {
-      await ReminderService.instance.requestPermissions();
-    } catch (_) {}
+    // Notification initialization and permission prompts happen when a patient
+    // explicitly enables or tests a local reminder.
 
-    // Hook up notification action callback so tapping "Mark as Taken" on the
-    // popup notification directly records adherence in the background.
-    ReminderService.instance.onAdherenceAction = (itemId, actionStatus) async {
-      try {
-        final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
-        await recordAdherence(
-          prescriptionItemId: itemId,
-          scheduledDate: today,
-          timeSlot: 'doctor_prescribed',
-          status: actionStatus,
-        );
-      } catch (_) {}
-    };
+    // Doctor-entered dose actions use the authenticated adherence endpoint.
+    ReminderService.instance.onAdherenceAction =
+        (itemId, actionStatus, scheduledDate, timeSlot) async {
+          await recordAdherence(
+            prescriptionItemId: itemId,
+            scheduledDate: scheduledDate,
+            timeSlot: timeSlot,
+            status: actionStatus,
+          );
+        };
 
     final token = await _storage.read(key: _deviceTokenKey);
     final patientIdStr = await _storage.read(key: _patientIdKey);
@@ -227,7 +220,7 @@ class AppController extends ChangeNotifier {
     }
     final extracted = Map<String, dynamic>.from(analysis['extracted'] as Map);
     final source = Map<String, dynamic>.from(analysis['source'] as Map);
-    return api.saveDischargeReport(
+    final saved = await api.saveDischargeReport(
       token: credentials.$1,
       report: {
         'original_filename': fileName,
@@ -240,6 +233,14 @@ class AppController extends ChangeNotifier {
         'doctor_name': extracted['doctor'],
       },
     );
+    // Refresh only patient-approved plans after the report has been saved.
+    try {
+      await fetchDischargeReports();
+    } catch (_) {
+      // The report is already saved; a refresh failure must not report a
+      // failed save or cause a second upload of the same document.
+    }
+    return saved;
   }
 
   Future<List<Map<String, dynamic>>> fetchDischargeReports() async {
@@ -247,7 +248,15 @@ class AppController extends ChangeNotifier {
     if (credentials == null || testLoginMatchesStoredToken(credentials.$1)) {
       return [];
     }
-    return api.getDischargeReports(credentials.$1);
+    final reports = await api.getDischargeReports(credentials.$1);
+    if (patient != null && patient!.id == credentials.$2) {
+      await ReminderService.instance.reconcileReportPlans(
+        patient: patient!,
+        reports: reports,
+        language: language,
+      );
+    }
+    return reports;
   }
 
   Future<Map<String, dynamic>> askDischargeQuestion({
@@ -267,6 +276,58 @@ class AppController extends ChangeNotifier {
       question: question,
       language: language,
     );
+  }
+
+  /// Cache the fixed Kannada care-plan explanation per authenticated patient
+  /// and report so reopening a saved report does not call Groq again.
+  Future<Map<String, dynamic>> cachedKannadaCarePlan({
+    required int reportId,
+    required String question,
+  }) async {
+    final credentials = await _tokenAndId();
+    if (credentials == null) {
+      throw const ApiException('Patient session expired');
+    }
+    final key = 'kannada_care_plan_${credentials.$2}_$reportId';
+    final cached = await _storage.read(key: key);
+    if (cached != null) return {'answer': cached};
+    final answer = await askDischargeQuestion(
+      reportId: reportId,
+      question: question,
+      language: 'Kannada',
+    );
+    final text = answer['answer']?.toString();
+    if (text != null && text.trim().isNotEmpty) {
+      await _storage.write(key: key, value: text);
+    }
+    return answer;
+  }
+
+  Future<String> cachedKannadaMedicineExplanation({
+    required int reportId,
+    required int medicineIndex,
+    required String medicineName,
+  }) async {
+    final credentials = await _tokenAndId();
+    if (credentials == null) {
+      throw const ApiException('Patient session expired');
+    }
+    final key = 'kannada_medicine_${credentials.$2}_${reportId}_$medicineIndex';
+    final cached = await _storage.read(key: key);
+    if (cached != null) return cached;
+    final answer = await askDischargeQuestion(
+      reportId: reportId,
+      question:
+          'Explain only the documented prescription directions for '
+          '$medicineName in simple Kannada. Preserve its exact name, dose, '
+          'route, frequency, dates and warnings. State when any detail is missing.',
+      language: 'Kannada',
+    );
+    final explanation = answer['answer']?.toString().trim() ?? '';
+    if (explanation.isNotEmpty) {
+      await _storage.write(key: key, value: explanation);
+    }
+    return explanation;
   }
 
   Future<List<PatientVisit>> fetchVisits() async {
@@ -335,6 +396,7 @@ class AppController extends ChangeNotifier {
 
   void startClinicalRecordsSync() {
     _clinicalSyncTimer?.cancel();
+    unawaited(ReminderService.instance.init().catchError((Object _) {}));
     fetchClinicalVisits(
       notify: true,
     ).catchError((Object _) => <ClinicalVisit>[]);
@@ -376,6 +438,13 @@ class AppController extends ChangeNotifier {
         ? clinicalVisits.first.diagnosis
         : null;
     clinicalVisits = records;
+    if (patient != null && patient!.id == creds.$2) {
+      await ReminderService.instance.reconcileDoctorPlans(
+        patient: patient!,
+        visits: records,
+        language: language,
+      );
+    }
 
     if (notify &&
         (countChanged ||
@@ -392,6 +461,14 @@ class AppController extends ChangeNotifier {
     if (testLoginMatchesStoredToken(creds.$1)) return null;
     final appt = await api.getNextAppointment(creds.$1, creds.$2);
     if (appt != null) {
+      if (nextAppointment != null &&
+          nextAppointment!.appointmentId != appt.appointmentId) {
+        unawaited(
+          ReminderService.instance
+              .cancelAppointmentReminder(nextAppointment!.appointmentId)
+              .catchError((Object _) {}),
+        );
+      }
       unawaited(
         ReminderService.instance
             .refreshAppointmentReminder(
@@ -399,6 +476,12 @@ class AppController extends ChangeNotifier {
               appointmentTime: appt.date,
               body: 'Dr. ${appt.doctorName} • ${appt.hospitalName}',
             )
+            .catchError((Object _) {}),
+      );
+    } else if (nextAppointment != null) {
+      unawaited(
+        ReminderService.instance
+            .cancelAppointmentReminder(nextAppointment!.appointmentId)
             .catchError((Object _) {}),
       );
     }
@@ -553,6 +636,7 @@ class AppController extends ChangeNotifier {
 
   /// ⚠️ TEST-ONLY — delete with lib/src/data/test_login.dart.
   Future<void> _completeTestLogin() async {
+    await _cancelPreviousPatientReminders(1);
     await _storage.write(key: _deviceTokenKey, value: kTestDeviceToken);
     await _storage.write(key: _patientIdKey, value: '1');
     patient = kTestPatient;
@@ -576,6 +660,8 @@ class AppController extends ChangeNotifier {
     final token = result.$1;
     final returnedPatientId = result.$2;
 
+    await _cancelPreviousPatientReminders(returnedPatientId);
+
     await _storage.write(key: _deviceTokenKey, value: token);
     await _storage.write(
       key: _patientIdKey,
@@ -587,5 +673,19 @@ class AppController extends ChangeNotifier {
     startClinicalRecordsSync();
     stopCameraHardware();
     notifyListeners();
+  }
+
+  Future<void> _cancelPreviousPatientReminders(int nextPatientId) async {
+    final previousId = int.tryParse(
+      await _storage.read(key: _patientIdKey) ?? '',
+    );
+    if (previousId == null || previousId == nextPatientId) return;
+    await ReminderService.instance.cancelPatientReminders(previousId);
+    if (nextAppointment != null) {
+      await ReminderService.instance.cancelAppointmentReminder(
+        nextAppointment!.appointmentId,
+      );
+      nextAppointment = null;
+    }
   }
 }

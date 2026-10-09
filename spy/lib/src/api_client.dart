@@ -417,11 +417,14 @@ class ApiClient {
   final String baseUrl;
 
   ApiClient({
-    this.baseUrl = const String.fromEnvironment(
-      'API_URL',
-      defaultValue: 'http://localhost:8000',
-    ),
-  });
+    String? baseUrl,
+  }) : baseUrl = normalizeApiBaseUrl(
+         baseUrl ??
+             const String.fromEnvironment(
+               'API_URL',
+               defaultValue: 'https://saathi-api-v2-x5at.onrender.com',
+             ),
+       );
 
   Map<String, String> _headers({String? token}) => {
     'Content-Type': 'application/json',
@@ -432,7 +435,6 @@ class ApiClient {
 
   /// Backend POST /auth/login expects application/x-www-form-urlencoded
   Future<LoginResponse> login(String username, String password) async {
-    debugPrint('[ApiClient.login] Attempting login for user: $username');
     debugPrint('[ApiClient.login] POST $baseUrl/auth/login');
     try {
       final response = await http.post(
@@ -469,7 +471,6 @@ class ApiClient {
       rethrow;
     } catch (e) {
       debugPrint('[ApiClient.login] Exception type: ${e.runtimeType}');
-      debugPrint('[ApiClient.login] Exception message: $e');
       // Distinguish network/connection errors from other failures
       final msg = e.toString().toLowerCase();
       if (msg.contains('socketexception') ||
@@ -488,7 +489,7 @@ class ApiClient {
           'Unable to connect to the server. Is the backend running at $baseUrl?',
         );
       }
-      throw ApiException('Login failed: ${e.runtimeType} — $e');
+      throw ApiException('Login failed (${e.runtimeType}). Please try again.');
     }
   }
 
@@ -1432,6 +1433,9 @@ class ApiClient {
     }
   }
 }
+
+String normalizeApiBaseUrl(String value) =>
+    value.trim().replaceFirst(RegExp(r'/+$'), '');
 
 class AppointmentRescheduleInfo {
   const AppointmentRescheduleInfo({

@@ -1,8 +1,6 @@
 import 'dart:convert';
-import 'dart:io';
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 
@@ -16,6 +14,9 @@ class ApiException implements Exception {
   @override
   String toString() => message;
 }
+
+String normalizeApiBaseUrl(String value) =>
+    value.trim().replaceFirst(RegExp(r'/+$'), '');
 
 /// Talks to the shared FastAPI backend on behalf of the patient app.
 class ApiClient {
@@ -96,11 +97,11 @@ class ApiClient {
   }
 
   static String get baseUrl {
-    const configured = String.fromEnvironment('API_URL');
-    if (configured.isNotEmpty) return configured;
-    if (kIsWeb) return 'http://localhost:8000';
-    if (Platform.isAndroid) return 'http://10.0.2.2:8000';
-    return 'http://localhost:8000';
+    const configured = String.fromEnvironment(
+      'API_URL',
+      defaultValue: 'https://saathi-api-v2-x5at.onrender.com',
+    );
+    return normalizeApiBaseUrl(configured);
   }
 
   Map<String, String> _headers({String? token}) => {

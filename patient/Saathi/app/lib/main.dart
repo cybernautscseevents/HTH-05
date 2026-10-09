@@ -5,6 +5,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'src/app_controller.dart';
 import 'src/l10n/app_text.dart';
 import 'src/screens/app_shell.dart';
+import 'src/screens/next_appointment_screen.dart';
 import 'src/services/reminder_service.dart';
 import 'src/settings.dart';
 import 'src/theme.dart';
@@ -29,11 +30,33 @@ class _SaathiBootstrapState extends State<SaathiBootstrap> {
     super.initState();
     if (kDebugMode) AppText.debugAssertComplete();
     controller = AppController()..initialize();
+    controller.addListener(_onControllerChange);
     ReminderService.instance.init();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ReminderService.instance.flushPendingNavigation();
+    });
+  }
+
+  void _onControllerChange() {
+    if (controller.status != AppStatus.patientLinked) return;
+    ReminderService.instance.onAppointmentTap = () {
+      final nav = ReminderService.instance.navigatorKey.currentState;
+      if (nav == null) return;
+      nav.push(
+        MaterialPageRoute(
+          builder: (_) => NextAppointmentScreen(controller: controller),
+        ),
+      );
+    };
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ReminderService.instance.flushPendingNavigation();
+    });
   }
 
   @override
   void dispose() {
+    controller.removeListener(_onControllerChange);
+    ReminderService.instance.onAppointmentTap = null;
     controller.dispose();
     super.dispose();
   }

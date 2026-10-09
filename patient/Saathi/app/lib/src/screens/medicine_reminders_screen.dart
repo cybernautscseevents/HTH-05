@@ -6,6 +6,7 @@ import '../app_controller.dart';
 import '../l10n/app_text.dart';
 import '../models.dart';
 import '../services/reminder_service.dart';
+import '../services/reminder_plan.dart';
 import '../theme.dart';
 import '../widgets/patient_scaffold.dart';
 import '../widgets/patient_widgets.dart';
@@ -637,10 +638,6 @@ class _NotificationStatusBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final firstItem = prescription.items.isNotEmpty
-        ? prescription.items.first
-        : null;
-
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -713,13 +710,22 @@ class _NotificationStatusBanner extends StatelessWidget {
                   .map(
                     (item) => (item, ReminderService.parseExplicitTimes(item)),
                   )
-                  .where((entry) => entry.$2.isNotEmpty)
+                  .where(
+                    (entry) =>
+                        MedicineReminderPlan.fromDoctor(
+                          patientId: patient.id,
+                          prescriptionId: prescription.id,
+                          item: entry.$1,
+                          times: entry.$2,
+                        ) !=
+                        null,
+                  )
                   .toList();
               if (exact.isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text(
-                      'Medicine timing is unclear. Please confirm with your treating doctor or pharmacist.',
+                      'A fixed reminder needs documented clock times and start/end dates. Please confirm missing details with your doctor or pharmacist.',
                     ),
                   ),
                 );
@@ -734,7 +740,7 @@ class _NotificationStatusBanner extends StatelessWidget {
                       exact
                           .map(
                             (entry) =>
-                                '${entry.$1.name}: ${entry.$2.map(ReminderService.formatTimeOfDay).join(', ')}',
+                                '${entry.$1.name}: ${entry.$2.map(ReminderService.formatTimeOfDay).join(', ')} · ${entry.$1.startDate} – ${entry.$1.endDate}',
                           )
                           .join('\n'),
                     ),
@@ -756,6 +762,7 @@ class _NotificationStatusBanner extends StatelessWidget {
                 final count = await ReminderService.instance
                     .syncPrescriptionReminders(
                       patient: patient,
+                      prescriptionId: prescription.id,
                       diseaseName: diagnosis ?? patient.condition,
                       items: prescription.items,
                       language: controller.language,
@@ -776,84 +783,31 @@ class _NotificationStatusBanner extends StatelessWidget {
               }
             },
           ),
-          if (firstItem != null) ...[
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () {
-                      ReminderService.instance.trigger(
-                        context,
-                        ReminderContent(
-                          patientName: controller.patient?.name ?? 'Patient',
-                          medicineName: firstItem.name,
-                          instruction: firstItem.dosage != null
-                              ? '${firstItem.dosage!} • ${firstItem.foodTiming ?? "After Food"}'
-                              : (firstItem.foodTiming ?? 'After Food'),
-                          diseaseName:
-                              diagnosis ??
-                              controller.patient?.condition ??
-                              'Health condition',
-                          language: controller.language,
-                          itemId: firstItem.itemId,
-                          dosage: firstItem.dosage,
-                          foodTiming: firstItem.foodTiming,
-                        ),
-                      );
-                    },
-                    icon: const Icon(Icons.play_arrow_rounded, size: 18),
-                    label: const Text('Test Pop-up Now'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: colors.primary,
-                      side: BorderSide(color: colors.primary),
-                      padding: const EdgeInsets.symmetric(vertical: 8),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: () async {
+              try {
+                await ReminderService.instance.scheduleTestNotification();
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Test notification scheduled in 30 seconds.',
+                      ),
                     ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: () {
-                      ReminderService.instance.triggerHeadsUpTest(
-                        context: context,
-                        content: ReminderContent(
-                          patientName: controller.patient?.name ?? 'Patient',
-                          medicineName: firstItem.name,
-                          instruction: firstItem.dosage != null
-                              ? '${firstItem.dosage!} • ${firstItem.foodTiming ?? "After Food"}'
-                              : (firstItem.foodTiming ?? 'After Food'),
-                          diseaseName:
-                              diagnosis ??
-                              controller.patient?.condition ??
-                              'Health condition',
-                          language: controller.language,
-                          itemId: firstItem.itemId,
-                          dosage: firstItem.dosage,
-                          foodTiming: firstItem.foodTiming,
-                        ),
-                        delaySeconds: 5,
-                      );
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'Pop-up scheduled in 5 seconds! Press Home to see it appear on your home screen.',
-                          ),
-                          duration: Duration(seconds: 4),
-                        ),
-                      );
-                    },
-                    icon: const Icon(Icons.timer_rounded, size: 18),
-                    label: const Text('Test in 5s'),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: colors.primary,
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
+                  );
+                }
+              } catch (error) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Could not schedule test: $error')),
+                  );
+                }
+              }
+            },
+            icon: const Icon(Icons.timer_rounded),
+            label: const Text('Test notification in 30 seconds'),
+          ),
         ],
       ),
     );

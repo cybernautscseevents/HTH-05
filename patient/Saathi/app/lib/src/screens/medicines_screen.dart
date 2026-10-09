@@ -7,6 +7,8 @@ import '../theme.dart';
 import '../widgets/patient_scaffold.dart';
 import '../widgets/patient_widgets.dart';
 import 'medicine_reminders_screen.dart';
+import '../services/reminder_plan.dart';
+import '../services/reminder_service.dart';
 
 /// MEDICINES SCREEN
 ///
@@ -169,22 +171,20 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                 final regularUploaded = uploadedMedicines
                     .where(
                       (entry) =>
-                          !RegExp(
-                            r'\b(as needed|if needed|prn)\b',
-                            caseSensitive: false,
-                          ).hasMatch(
-                            '${entry.$2['frequency'] ?? ''} ${entry.$2['instructions'] ?? ''}',
+                          entry.$2['as_needed'] != true &&
+                          !isAsNeeded(
+                            '${entry.$2['frequency'] ?? ''} '
+                            '${entry.$2['instructions'] ?? ''}',
                           ),
                     )
                     .toList();
                 final asNeededUploaded = uploadedMedicines
                     .where(
                       (entry) =>
-                          RegExp(
-                            r'\b(as needed|if needed|prn)\b',
-                            caseSensitive: false,
-                          ).hasMatch(
-                            '${entry.$2['frequency'] ?? ''} ${entry.$2['instructions'] ?? ''}',
+                          entry.$2['as_needed'] == true ||
+                          isAsNeeded(
+                            '${entry.$2['frequency'] ?? ''} '
+                            '${entry.$2['instructions'] ?? ''}',
                           ),
                     )
                     .toList();
@@ -298,6 +298,7 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                             _UploadedReportMedicine(
                               report: entry.$1,
                               medicine: entry.$2,
+                              controller: widget.controller,
                             ),
                         ],
                         if (asNeededUploaded.isNotEmpty) ...[
@@ -314,6 +315,7 @@ class _MedicinesScreenState extends State<MedicinesScreen> {
                             _UploadedReportMedicine(
                               report: entry.$1,
                               medicine: entry.$2,
+                              controller: widget.controller,
                             ),
                         ],
                       ],
@@ -760,9 +762,143 @@ class _TabletPainter extends CustomPainter {
 }
 
 class _UploadedReportMedicine extends StatelessWidget {
-  const _UploadedReportMedicine({required this.report, required this.medicine});
+  const _UploadedReportMedicine({
+    required this.report,
+    required this.medicine,
+    required this.controller,
+  });
   final Map<String, dynamic> report;
   final Map medicine;
+  final AppController controller;
+
+  void _showKannadaExplanation(BuildContext context) {
+    final reportId = report['report_id'];
+    final items = (report['structured_data'] as Map?)?['medicines'];
+    if (reportId is! int || items is! List) return;
+    final index = items.indexOf(medicine);
+    if (index < 0) return;
+    final future = controller.cachedKannadaMedicineExplanation(
+      reportId: reportId,
+      medicineIndex: index,
+      medicineName: medicine['name']?.toString() ?? '',
+    );
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(medicine['name']?.toString() ?? 'Medicine'),
+        content: FutureBuilder<String>(
+          future: future,
+          builder: (ctx, snapshot) {
+            if (!snapshot.hasData && !snapshot.hasError) {
+              return const CircularProgressIndicator();
+            }
+            if (snapshot.hasError) {
+              return const Text(
+                'Kannada explanation is unavailable. Check the original prescription.',
+              );
+            }
+            return SingleChildScrollView(child: Text(snapshot.data!));
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _enable(BuildContext context) async {
+    final patient = controller.patient;
+    final reportId = report['report_id'];
+    final items = (report['structured_data'] as Map?)?['medicines'];
+    if (patient == null || reportId is! int || items is! List) return;
+    final index = items.indexOf(medicine);
+    if (index < 0) return;
+    final writtenTimes = explicitClockTimes(
+      '${medicine['timing'] ?? ''} ${medicine['instructions'] ?? ''}',
+    );
+    final times = <TimeOfDay>[...writtenTimes];
+    if (times.isEmpty) {
+      final frequency = medicine['frequency']?.toString().toLowerCase() ?? '';
+      final count =
+          RegExp(r'\b(twice|two times|2 times|bid)\b').hasMatch(frequency)
+          ? 2
+          : 1;
+      for (var i = 0; i < count; i++) {
+        if (!context.mounted) return;
+        final chosen = await showTimePicker(
+          context: context,
+          helpText: 'Choose personal reminder time ${i + 1} of $count',
+          initialTime: TimeOfDay.now(),
+        );
+        if (chosen == null) return;
+        times.add(chosen);
+      }
+    }
+    final plan = MedicineReminderPlan.fromReport(
+      patientId: patient.id,
+      reportId: reportId,
+      medicineIndex: index,
+      medicine: medicine,
+      times: times,
+    );
+    if (!context.mounted) return;
+    if (plan == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'A fixed reminder needs documented start and end dates. As-needed medicines have no daily reminder.',
+          ),
+        ),
+      );
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirm medicine reminders'),
+        content: Text(
+          '${plan.name}\n${plan.dose ?? 'Dose not documented'}\n'
+          '${times.map(ReminderService.formatTimeOfDay).join(', ')}\n'
+          '${plan.startDate.day}/${plan.startDate.month}/${plan.startDate.year} – '
+          '${plan.endDate.day}/${plan.endDate.month}/${plan.endDate.year}\n'
+          'Source: uploaded discharge report',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Turn on'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      final count = await ReminderService.instance.enableMedicinePlan(
+        plan,
+        patientName: patient.name,
+        language: controller.language,
+      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$count local reminder times scheduled.')),
+        );
+      }
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not enable reminders: $error')),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -801,6 +937,17 @@ class _UploadedReportMedicine extends StatelessWidget {
               const SizedBox(height: 4),
               Text(details, style: TextStyle(color: colors.text)),
             ],
+            if (medicine['source_text']?.toString().trim().isNotEmpty == true)
+              Text('Original: ${medicine['source_text']}'),
+            if (medicine['patient_explanation']?.toString().trim().isNotEmpty ==
+                true)
+              Text('In simple words: ${medicine['patient_explanation']}'),
+            if (controller.language == AppLanguage.kannada)
+              TextButton.icon(
+                onPressed: () => _showKannadaExplanation(context),
+                icon: const Icon(Icons.translate_rounded),
+                label: const Text('ಕನ್ನಡದಲ್ಲಿ ವಿವರಿಸಿ'),
+              ),
             const SizedBox(height: 6),
             Text(
               'Source: ${report['hospital_name'] ?? report['original_filename']}',
@@ -817,10 +964,15 @@ class _UploadedReportMedicine extends StatelessWidget {
                 'Medicine timing is unclear. Please confirm with your treating doctor or pharmacist.',
                 style: TextStyle(color: colors.textMuted, fontSize: 12),
               ),
-            Text(
-              'Reminder times are not activated from uploaded instructions.',
-              style: TextStyle(color: colors.textMuted, fontSize: 12),
-            ),
+            if (medicine['as_needed'] != true &&
+                !isAsNeeded(
+                  '${medicine['frequency'] ?? ''} ${medicine['instructions'] ?? ''}',
+                ))
+              TextButton.icon(
+                onPressed: () => _enable(context),
+                icon: const Icon(Icons.notifications_active_outlined),
+                label: const Text('Review and enable phone reminders'),
+              ),
           ],
         ),
       ),
